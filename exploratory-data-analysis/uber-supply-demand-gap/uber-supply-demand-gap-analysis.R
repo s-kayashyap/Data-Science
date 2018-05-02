@@ -1,16 +1,16 @@
 # Uber Supply-Demand Gap 
 # Input Dataset : Uber Request Data.csv
 # Output Dataset: Uber Data cleaned.csv
-# Objective : The aim of analysis is to identify the root cause of the problem (i.e. cancellation
-#             and non-availability of cars) and recommend ways to improve the situation. As a result
-#             of your analysis, you should be able to present to the client the root cause(s) and
+# Objective : The aim of this analysis is to identify the root cause of the problem (i.e. cancellation
+#             and non-availability of cabs) and recommend ways to improve the situation. As a result
+#             of this analysis, we should be able to present to the client the root cause(s) and
 #             possible hypotheses of the problem(s) and recommend ways to improve them.  
 # Name : Swami Prem Pranav Kayashyap (APFE1786831)
 # ------------------------------------------------------
 # Date : 11th Mar, 2018
 
-#Import Uber data from "Uber Request Data.csv" 
-uber_data <- read.csv("Uber Request Data.csv",stringsAsFactors = FALSE)
+#Import Uber data from "Uber Request Data.csv" file
+uber_data <- read.csv(file.choose(),stringsAsFactors = FALSE)
 
 #Converting all pickup points to lower case
 uber_data$Pickup.point <- sapply(uber_data$Pickup.point, tolower)
