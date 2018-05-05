@@ -1,5 +1,6 @@
 # Simple Linear Regression modeling 
 # Input Dataset : tvmarketing.csv
+# Objective : To get an idea of machine learning models. we will build a simple linear regression model in R.
 # Name : Swami Prem Pranav Kayashyap (APFE1786831)
 # ------------------------------------------------------
 # Date : 21st Apr, 2018
@@ -37,9 +38,13 @@ summary(SLR_model)
 
 #Predict the sales price of test data using this SLR_model and add this result with test_data
 # to evaluate our model's efficiency
-test_data$predicted_sales <- predict(SLR_model, test_data[,-2])
+test_data$predicted_sales <- predict(SLR_model, test_data)
 
 #One fact is that , R_Square value of the model is equivalent to square of correlation between
 #actual output and predicted output from model. Just verify.
 R <- cor(test_data$Sales,test_data$predicted_sales)
 R_squared <- R^2
+
+#Lets compare the actual Sales and predicted sales
+compare_result <- subset(test_data, select = c(Sales,predicted_sales))
+View(compare_result)
