@@ -1,6 +1,9 @@
 # Gramener EDA Case Study 
 # Input Dataset : loan.csv
 # Output Dataset: loan_cleaned.csv
+# Objective: To understand how consumer attributes and loan attributes influence the tendency of default. To identify
+#            patterns which indicate if a person is likely to default, which may be used for taking actions such as
+#            denying the loan, reducing the amount of loan, lending (to risky applicants) at a higher interest rate, etc. 
 # Name : Swami Prem Pranav Kayashyap (APFE1786831)
 # ------------------------------------------------------
 # Date : 1st Apr, 2018
