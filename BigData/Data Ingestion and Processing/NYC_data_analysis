@@ -1,0 +1,614 @@
+-- The New York City Taxi and Limousine Commission [TLC] Data Analysis
+--
+-- Scope                 : The dataset provided by TLC contains the detailed trip level data of trips made
+--                         by yellow taxis for the months of November and December 2017 in New York City.
+--                         Our aim is to do the analysis based on the concepts of Ingesting and Big Data
+--                         Processing on the APACHE-HIVE platform.
+--
+-- Uses                  : Purpose of this analysis is to get a better understanding of the taxi system,
+--                         so that the city of New York can improve the efficiency of in-city commutes.
+--
+--Database tables        : 1. prem_nyc_taxi (original tables)
+--                         2. prem_nyc_taxi_partition_orc (created dynamic partitioned table to improve the performance)
+--                         3. prem_nyc_taxi_bucket (created 5 bucket to improve the performance)
+-- 
+-- Input datasets -> 
+-- yellow_tripdata_2017-11.csv
+-- yellow_tripdata_2017-12.csv 
+--                       : Both the dataset have similar information. Following are the important fields
+--                         which we have in the dataset.
+-- 1.  vendorid--A code indicating the TPEP provider that provided the record. 1= Creative Mobile Technologies, LLC; 2= VeriFone Inc. 
+-- 2.  tpep_pickup_timestamp--The date and time when the meter was engaged.
+-- 3.  tpep_dropoff_timestamp--The date and time when the meter was disengaged.
+-- 4.  passenger_count--The number of passengers in the vehicle. This is a driver-entered value.
+-- 5.  trip_distance--The elapsed trip distance in miles reported by the taximeter.
+-- 6.  rate_code--The final rate code in effect at the end of the trip. 1= Standard rate 2=JFK 3=Newark 4=Nassau or Westchester 5=Negotiated fare 6=Group ride.
+-- 7.  store_forward_flag--This flag indicates whether the trip record was held in vehicle memory before sending to the vendor, aka store and forward, because the vehicle did not have a connection to the server. Y= store and forward trip N= not a store and forward trip.
+-- 8.  pickup_location--TLC Taxi Zone in which the taximeter was engaged.
+-- 9.  dropoff_location--TLC Taxi Zone in which the taximeter was disengaged.
+-- 10. payment_type--A numeric code signifying how the passenger paid for the trip. 1= Credit card 2= Cash 3= No charge 4= Dispute 5= Unknown 6= Voided trip.
+-- 11. fare_charge--The time-and-distance fare calculated by the meter.
+-- 12. extra_charge--Miscellaneous extras and surcharges. Currently, this only includes the $0.50 and $1 rush hour and overnight charges.
+-- 13. mta_tax_charge--$0.50 MTA tax that is automatically triggered based on the metered rate in use.
+-- 14. tip_amount--Tip amount – This field is automatically populated for credit card tips. Cash tips are not included.
+-- 15. tolls_charge--Total amount of all tolls paid in trip.
+-- 16. improvement_surcharge--$0.30 improvement surcharge assessed trips at the flag drop. The improvement surcharge began being levied in 2015.
+-- 17. total_charge--The total amount charged to passengers. It does not include cash tips.
+--
+-- Name : Swami Prem Pranav Kayashyap (APFE1786831)
+--        
+-- ------------------------------------------------------
+-- Date : 26th Aug, 2018
+
+--I will be utilizing the Hadoop platform and HDFS for the analysis of the dataset and the queries will be written and executed from a HUE notebook.
+--Following Action need to be performed:
+--1. Create three directory /user/skashyap733_gmail/mydata/nyc_texi_data, /user/skashyap733_gmail/mydata/nyc_texi_data/partition, /user/skashyap733_gmail/mydata/nyc_texi_data/bucket to keep this datasets. 
+--2. Copy the datasets into this directory through web console by using following command.
+--    hadoop fs -cp /common_folder/nyc_taxi_data/* /user/skashyap733_gmail/mydata/nyc_texi_data/*
+--3. Launch Hue Interface and execute the queries on notebook.
+
+--Analysis is conducted in 3 steps.
+--Step 1: Basic Data Quality Checks
+--Step 2: Analysis-I
+--Step 3: Analysis-II
+
+-- IMPORTANT: Add the required jar files and set the following parameters before creating any table
+ADD JAR /opt/cloudera/parcels/CDH/lib/hive/lib/hive-hcatalog-core-1.1.0-cdh5.11.2.jar;
+SET hive.execution.engine=mr;
+
+--Set few more parameters so that tables can be created from both folder Nov and Dec in HDFS
+SET hive.mapred.supports.subdirectories = true;
+SET hive.input.dir.recursive = true;
+SET hive.supports.subdirectories = true;
+SET mapreduce.input.fileinputformat.input.dir.recursive = true;
+
+-- Set few parameter for crating partition table
+SET hive.exec.dynamic.partition = true;
+SET hive.exec.max.dynamic.partitions = 1000;
+SET hive.exec.max.dynamic.partitions.pernode = 1000;
+SET hive.exec.dynamic.partition.mode = nonstrict;
+
+-- Set few parameter for creating bucket of table
+set hive.enforce.bucketing = true;
+
+--Creating HSFS table prem_nyc_taxi for analysis
+
+CREATE EXTERNAL TABLE IF NOT EXISTS prem_nyc_taxi(
+vendorid int,
+tpep_pickup_timestamp string,
+tpep_dropoff_timestamp string,
+passenger_count int,
+trip_distance double,
+rate_code int,
+store_forward_flag string,
+pickup_location int,
+dropoff_location int,
+payment_type int,
+fare_charge double,
+extra_charge double,
+mta_tax_charge double,
+tip_amount double,
+tolls_charge double,
+improvement_surcharge double,
+total_charge double
+)
+ROW FORMAT DELIMITED FIELDS TERMINATED BY ','
+LOCATION '/user/skashyap733_gmail/mydata/nyc_texi_data'
+tblproperties ("skip.header.line.count"="2");
+
+--Check if the data table has been loaded from both the directory (Nov and Dec)successfully into the HIVE environment.
+
+SELECT * FROM prem_nyc_taxi where prem_nyc_taxi.tpep_pickup_timestamp Like '_____11%' limit 10;
+SELECT * FROM prem_nyc_taxi where prem_nyc_taxi.tpep_pickup_timestamp Like '_____12%' limit 10;
+
+-- Task 1 :
+-- Basic Data Quality Checks
+-- 
+
+--
+-- Q1.How many records has each TPEP provider provided? Write a query that summarises the number of records of each provider.
+--
+
+SELECT vendorid , count(*) as num_records
+FROM prem_nyc_taxi
+GROUP BY vendorid
+ORDER BY vendorid;
+
+--
+-- Ans 1. Creative Mobile Technologies, LLC has provided 8447149 records where as VeriFone Inc has provided 10345930.  
+-- 	 vendorid	num_records
+--  	1	     8447149
+--	    2	     10345930
+--
+
+
+--
+-- Q2. The data provided is for months November and December only. Check whether the data is consistent,
+--     and if not, identify the data quality issues. Mention all data quality issues in comments.
+--
+
+-- A. Checking if tpep_pickup_timestamp is correct
+SELECT year(tpep_pickup_timestamp)as pickup_year, month(tpep_pickup_timestamp)as pickup_month, count(*)as num_records
+FROM prem_nyc_taxi
+GROUP BY year(tpep_pickup_timestamp), month(tpep_pickup_timestamp)
+ORDER BY pickup_year, pickup_month;
+
+-- B. Checking if tpep_dropoff_timestamp is correct
+SELECT year(tpep_dropoff_timestamp)as dropoff_year, month(tpep_dropoff_timestamp)as dropoff_month, count(*)as num_records
+FROM prem_nyc_taxi
+GROUP BY year(tpep_dropoff_timestamp), month(tpep_dropoff_timestamp)
+ORDER BY dropoff_year, dropoff_month;
+
+-- C. Checking if sequence of tpep_pickup_timestamp and tpep_dropoff_timestamp is correct
+SELECT count(*) as num_records
+FROM prem_nyc_taxi
+WHERE unix_timestamp(tpep_pickup_timestamp) > unix_timestamp(tpep_dropoff_timestamp);
+
+-- D. Checking if the passenger count is correct
+SELECT passenger_count, count(*) as num_records
+FROM prem_nyc_taxi
+GROUP BY passenger_count
+ORDER BY passenger_count;
+
+-- E. Checking if rate code is correct
+SELECT rate_code, count(*) as num_records
+FROM prem_nyc_taxi
+GROUP BY rate_code
+ORDER BY rate_code;
+
+-- F. Checking if payment_type is correct
+SELECT payment_type, count(*) as num_records
+FROM prem_nyc_taxi
+GROUP BY payment_type
+ORDER BY payment_type;
+
+-- G. Checking if extra_charges is correct
+SELECT extra_charge, count(*) as num_records
+FROM prem_nyc_taxi
+GROUP BY extra_charge
+ORDER BY extra_charge;
+
+-- H. Checking if mta_tax_charge is correct
+SELECT mta_tax_charge, count(*) as num_records
+FROM prem_nyc_taxi
+GROUP BY mta_tax_charge
+ORDER BY mta_tax_charge;
+
+-- I. Checking if non-zero tip amount has been registered for cash payment trips
+SELECT tip_amount, count(*) as num_records
+FROM prem_nyc_taxi
+WHERE payment_type = 2 and tip_amount != 0
+GROUP BY tip_amount;
+
+-- J. Checking if improvement_surcharge is correct
+SELECT improvement_surcharge, count(*) as num_records
+FROM prem_nyc_taxi
+GROUP BY improvement_surcharge
+ORDER BY improvement_surcharge;
+
+-- K. Checking if total_charge is correct
+SELECT total_charge, count(*) as num_records
+FROM prem_nyc_taxi
+GROUP BY total_charge
+ORDER BY total_charge;
+
+--
+-- Ans 2. Data is not consistent.
+--        A. As from the tpep_pickup_timestamp analysis below we an see that data is not only from the Nov and Dec month of year 2017.
+--        Out of 18793079 records 315 records is non confirming data. which is about 0.0000167614%. 
+--        Although We can ignore this as this percentage very law.  
+--
+-- pickup_year	pickup_month	num_records
+-- 2001	           1	           1
+-- 2003	           1	           4
+-- 2008	           12	           21
+-- 2009	           1	           46
+-- 2017	           10	           208
+-- 2017	           11	           9284716
+-- 2017	           12	           9508048
+-- 2018	           1	           30
+-- 2018	           2	           2
+-- 2018	           3	           2
+-- 2041	           11	           1
+--        B. As from the tpep_dropoff_timestamp analysis below we an see that data is not only from the Nov and Dec month of year 2017.
+--        Out of 18793079 records 1907 records is non confirming data. which is about 0.00010147%. 
+--        Although We can ignore this as this percentage very law.  
+--
+-- dropoff_year	dropoff_month	num_records
+-- 2001	            1	            1
+-- 2003	            1	            4
+-- 2008	            12	            15
+-- 2009	            1	            52
+-- 2016	            5	            1
+-- 2017	            10	            76
+-- 2017	            11	            9280705
+-- 2017	            12	            9510467
+-- 2018	            1	            1752
+-- 2018	            2	            2
+-- 2018	            3	            2
+-- 2019	            4	            1
+-- 2041	            11	            1
+--         C. As from the sequence of tpep_pickup_timestamp and tpep_dropoff_timestamp analysis 1419 records are erroneous.
+--            There is few record which is having pickup time after the dropoff time which is not a valid scenario.  
+-- 	num_records
+--	  1419
+--        D. As from the passenger count analysis below.There are few records which have num of passenger more then 6 
+--           which is not a valid scenario and it is out of capacity of yellow texi.
+--
+-- passenger_count	num_records
+--         0	      108970
+--         1	      13251273
+--         2	      2816147
+--         3	      810776
+--         4	      398856
+--         5	      875854
+--         6	      531011
+--         7	      75
+--         8	      60
+--         9	      56
+--         192	      1   
+--
+--         E. As from the rate_code analysis below we can see that 178 records under rate_code 99 is inconsistent data.
+-- rate_code	num_records
+--     1	     18276018
+--     2	     404737
+--     3	     40178
+--     4	     9746
+--     5	     62073
+--     6	     149
+--     99	     178
+--
+--         F. As from the payment_type analysis below we can see that as per our agreement in data dictionary
+--             all the data is consistent.
+-- payment_type	num_records
+--     1	     12638715
+--     2	     6026305
+--     3	     100530
+--     4	     27529
+--
+--         G. As from the extra_charge analysis we can see that there is few records which is 
+--          having value less then 0 which is not practically possible. There are 44 distinct extra_charge 
+--          values in the dataset Ranging between -$48.64 and $69.8. However, the extra_charge is a surcharge that can only take up $0.5 and $1.
+--
+--         H. As from the mta_tax_charge analysis we can see that there are 19 distinct mta_tax_charge
+--            values in the dataset Ranging between -$0.5 and $117.85. The data dictionary specified that mta_tax_charge of $0.5.
+--            Therefore, it can only take up two values $0 or $0.5.
+--
+--         I. As from the tip amount analysis we can see that there are 3 records which is inconsistent.
+-- tip_amount	num_records
+-- 4	            1
+-- 20.65          	1
+-- 1.8	            1
+--
+--         J. As from the improvement_surcharge analysis below we can see that there are 5 distinct values of improvement_surcharge ranging between -$0.3 and $1.
+--            The improvement_surcharge of $0.3 began being levied on assessed trips at flag drop this means that
+--            the improvement_surcharge can only take up $0 or $0.3 .
+-- improvement_surcharge	num_records
+--     -0.3	                 9367
+--     0	                 4916
+--     0.3	                 18778750
+--     0.55	                 1
+--     1	                 45
+--
+--         K. As from the total_charge analysis we can see that there is few records which is 
+--          having value less then 0 which is not practically possible. So these data is not consistent. 
+
+-- Q3. You might have encountered unusual or erroneous rows in the dataset. Can you conclude which vendor is doing a bad job in providing the records?
+--
+
+SELECT vendorid, count(*) as num_wrong_records
+FROM prem_nyc_taxi
+WHERE (year(tpep_pickup_timestamp) != 2017 OR
+       month(tpep_pickup_timestamp) NOT IN(11,12) OR
+	   year(tpep_dropoff_timestamp) != 2017 OR
+	   month(tpep_dropoff_timestamp) NOT IN(11,12) OR
+	   unix_timestamp(tpep_pickup_timestamp) > unix_timestamp(tpep_dropoff_timestamp) OR
+	   passenger_count NOT IN(1,2,3,4,5,6) OR
+	   trip_distance <= 0 OR
+	   fare_charge <= 0 OR
+	   rate_code NOT IN (1,2,3,4,5,6) OR
+	   payment_type NOT IN (1,2,3,4,5,6) OR
+	   extra_charge NOT IN (0,0.5,1) OR
+	   mta_tax_charge NOT IN(0,0.5) OR
+	   tip_amount < 0 OR
+	   ( payment_type = 2 and tip_amount != 0) OR
+	   tolls_charge < 0 OR
+	   improvement_surcharge NOT IN (0,0.3) OR
+	   total_charge <= 0)
+GROUP BY vendorid
+ORDER BY vendorid;
+
+--
+-- Ans 3. Creative Moblie Technologies,LLC (Vendor ID = 1) have provided 208405 out of total 8447149 records. 
+--        which is approximately 2.467%
+--
+--        VeriFone Inc. (Vendor ID = 2) have provided 103192 out of total 10345930 records. 
+--        which is approximately 0.997%
+--
+--        From the above statement it is clear that Creative Moblie Technologies,LLC (Vendor ID = 1) is doing a bad job of providing records.
+-- 
+-- vendorid	num_wrong_records
+--     1	     208405
+--     2	     103192
+-- 
+
+-- Task 2 :
+-- Analysis-I
+--
+
+-- Creating partitioned table using ORC format
+CREATE EXTERNAL TABLE IF NOT EXISTS prem_nyc_taxi_partition_orc(
+vendorid int,
+tpep_pickup_timestamp string,
+tpep_dropoff_timestamp string,
+passenger_count int,
+trip_distance double,
+rate_code int,
+store_forward_flag string,
+pickup_location int,
+dropoff_location int,
+payment_type int,
+fare_charge double,
+extra_charge double,
+mta_tax_charge double,
+tip_amount double,
+tolls_charge double,
+improvement_surcharge double,
+total_charge double
+)
+PARTITIONED BY (p_month int, p_day int)
+STORED AS orc
+LOCATION '/user/skashyap733_gmail/mydata/nyc_texi_data/partition_orc'
+TBLPROPERTIES ("orc.compress" = "SNAPPY");
+
+-- Load the data from prem_nyc_taxi to prem_nyc_taxi_partition_orc table
+INSERT OVERWRITE TABLE prem_nyc_taxi_partition_orc PARTITION(p_month, p_day)
+SELECT vendorid, tpep_pickup_timestamp, tpep_dropoff_timestamp, passenger_count, trip_distance, rate_code, store_forward_flag, pickup_location, dropoff_location, payment_type, fare_charge, extra_charge, mta_tax_charge, tip_amount, tolls_charge, improvement_surcharge, total_charge, month(tpep_pickup_timestamp)as p_month, day(tpep_pickup_timestamp)as p_day
+FROM prem_nyc_taxi
+WHERE year(tpep_pickup_timestamp) = 2017 AND
+month(tpep_pickup_timestamp) IN(11,12) AND
+year(tpep_dropoff_timestamp) = 2017 AND month(tpep_dropoff_timestamp) IN(11,12) AND
+unix_timestamp(tpep_pickup_timestamp) < unix_timestamp(tpep_dropoff_timestamp) AND
+passenger_count IN(1,2,3,4,5,6) AND
+trip_distance > 0.0 AND
+rate_code IN(1,2,3,4,5,6) AND payment_type IN(1,2,3,4,5,6) AND
+fare_charge > 0 AND
+extra_charge IN(0,0.5,1) AND
+mta_tax_charge IN(0,0.5) AND
+tip_amount >= 0 AND
+tolls_charge >= 0 AND
+improvement_surcharge IN(0,0.3) AND
+total_charge > 0;
+
+--
+-- Q1. Compare the overall average fare for November and December.
+--
+
+SELECT p_month, round(avg(fare_charge),2) as average_fare_charge
+FROM prem_nyc_taxi_partition_orc
+GROUP BY p_month
+ORDER BY p_month;
+
+--
+-- Ans 1. Average fare charge of November is 1.22% higher then December.  
+--
+-- p_month	average_fare_charge
+--    11	    12.9
+--    12	    12.75
+
+--
+-- Q2. Explore the ‘number of passengers per trip’ - how many trips are made by each level of ‘Passenger_count’?
+--     Do most people travel solo or with other people? 	
+--
+
+SELECT passenger_count, count(*) as num_records
+FROM prem_nyc_taxi_partition_orc
+GROUP BY passenger_count
+ORDER BY passenger_count;
+
+--
+-- Ans2. As we can see out of total 18480967 passengers, 13102523 passengers travels solo. which is equals 70.897%.
+--       Which means most of the people prefer to travel solo.
+--
+-- passenger_count	num_records
+--     1	         13102523
+--     2	         2785290
+--     3	         802909
+--     4	         394616
+--     5	         868304
+--     6	         527325
+
+--
+-- Q3. Which is the most preferred mode of payment?
+--
+
+SELECT payment_type, count(*) as num_records
+FROM prem_nyc_taxi_partition_orc
+GROUP BY payment_type
+ORDER BY num_records desc;
+
+
+--
+-- Ans 3.  Out of total 18480967, Most prefered mode of payment is 12469337 by Credit card ( payment_type = 1).
+--         which means approx 67.47% payment is done using Credit card.
+--
+payment_type	num_records
+   1	         12469337
+   2	         5914388
+   3	         75884
+   4	         21358
+   
+--
+-- Q4. What is the average tip paid? Compare the average tip with the 25th, 50th and 75th percentiles and
+--     comment whether the ‘average tip’ is a representative statistic (of the central tendency) of ‘tip amount paid’.
+--   
+
+SELECT round(avg(tip_amount),3) as average_tip_amount, round(percentile_approx(tip_amount,0.25),3) as 25th_percentile_tip_amount, round(percentile_approx(tip_amount, 0.50),3) as 50th_percentile_tip_amount, round(percentile_approx(tip_amount, 0.75),3) as 75th_percentile_tip_amount
+FROM prem_nyc_taxi_partition_orc
+WHERE payment_type != 2;
+
+
+--
+-- Ans 4. There is $0.683 difference between the average_tip - median_tip (50th percentile]), this difference constitutes to 39.50% of the inter-quartile range.
+         Therefore, there is significant skewness in the distribution of the tip_amount parameter. This implies that the Average Tip is sqewed to the right of
+		 the Median_tip. This may be offset due to certain records having higher tip_amount values. Therefore, in this situation Average_Tip is not representative
+		 of central tendency. We can consider Median_Tip as a better representative of central tendency.
+--
+-- average_tip_amount	25th_percentile_tip_amount	50th_percentile_tip_amount	75th_percentile_tip_amount	distict_tip_amounts
+-- 2.683	                      1.32	                  2	                           3.049	               3894
+
+--
+-- Q5. Explore the ‘Extra’ (charge) variable - what fraction of total trips have an extra charge is levied?
+--
+
+SELECT extra_charge, count(*) as num_records
+FROM prem_nyc_taxi_partition_orc
+GROUP BY extra_charge
+ORDER BY extra_charge;
+
+--
+-- Ans 5. Out of total 18480967 records, 8524850 records have been charged extra_charge. which is approx 46.13% of total records.
+--
+-- extra_charge	num_records
+--    0	          9956117
+--    0.5	      5762312
+--    1	          2762538
+
+-- Task 3 :
+-- Analysis-II
+--
+
+-- Creating bucket table
+CREATE EXTERNAL TABLE IF NOT EXISTS prem_nyc_taxi_bucket(
+vendorid int,
+tpep_pickup_timestamp string,
+tpep_dropoff_timestamp string,
+passenger_count int,
+trip_distance double,
+rate_code int,
+store_forward_flag string,
+pickup_location int,
+dropoff_location int,
+payment_type int,
+fare_charge double,
+extra_charge double,
+mta_tax_charge double,
+tip_amount double,
+tolls_charge double,
+improvement_surcharge double,
+total_charge double
+)
+CLUSTERED BY (tip_amount) INTO 5 buckets
+STORED AS orc
+LOCATION '/user/skashyap733_gmail/mydata/nyc_texi_data/bucket'
+TBLPROPERTIES ("orc.compress" = "SNAPPY");
+
+-- Load the data from prem_nyc_taxi to prem_nyc_taxi_bucket table
+INSERT OVERWRITE TABLE prem_nyc_taxi_bucket
+SELECT vendorid, tpep_pickup_timestamp, tpep_dropoff_timestamp, passenger_count, trip_distance, rate_code, store_forward_flag, pickup_location, dropoff_location, payment_type, fare_charge, extra_charge, mta_tax_charge, tip_amount, tolls_charge, improvement_surcharge, total_charge
+FROM prem_nyc_taxi
+WHERE year(tpep_pickup_timestamp) = 2017 AND
+month(tpep_pickup_timestamp) IN(11,12) AND
+year(tpep_dropoff_timestamp) = 2017 AND month(tpep_dropoff_timestamp) IN(11,12) AND
+unix_timestamp(tpep_pickup_timestamp) < unix_timestamp(tpep_dropoff_timestamp) AND
+passenger_count IN(1,2,3,4,5,6) AND
+trip_distance > 0.0 AND
+rate_code IN(1,2,3,4,5,6) AND payment_type IN(1,2,3,4,5,6) AND
+fare_charge > 0 AND
+extra_charge IN(0,0.5,1) AND
+mta_tax_charge IN(0,0.5) AND
+tip_amount >= 0 AND
+tolls_charge >= 0 AND
+improvement_surcharge IN(0,0.3) AND
+total_charge > 0;
+
+--
+-- Q1. What is the correlation between the number of passengers and tip paid? Do multiple travellers pay more compared to solo travellers?
+--
+
+SELECT round( corr(passenger_count, tip_amount), 3 )as correlation_passengercount_vs_tipamount, round( avg( CASE WHEN passenger_count = 1 THEN tip_amount ELSE NULL END), 3 ) as solo_trips_average_tip, round( avg (CASE WHEN passenger_count != 1 THEN tip_amount ELSE NULL END), 3 ) as group_trips_average_tip
+FROM prem_nyc_taxi_bucket
+WHERE payment_type != 2;
+
+--
+-- Ans 1. A very weak positive correlation (+0.009) between passenger_count and tip_amount.
+-- Average tip for solo trips: $2.659. Average tip for group trips: $2.743 
+--
+-- correlation_passengercount_vs_tipamount	solo_trips_average_tip	group_trips_average_tip
+--                 0.009	                       2.659	             2.743
+
+--
+-- Q2. Create five buckets of ‘tip paid’: [0-5), [5-10), [10-15) , [15-20) and >=20. Calculate the percentage
+--     share of each bucket(i.e. the fraction of trips falling in each bucket).
+--
+
+SELECT bucket, count(*) as num_records,round(count(*)/max(records_count),5) as percent_share
+FROM ( SELECT *, count(*) over () records_count,
+        CASE WHEN tip_amount >= 0 and tip_amount < 5 THEN 'bucket_1' 
+             WHEN tip_amount >= 5 and tip_amount < 10 THEN 'bucket_2'
+             WHEN tip_amount >= 10 and tip_amount < 15 THEN 'bucket_3'
+             WHEN tip_amount >= 15 and tip_amount < 20 THEN 'bucket_4'
+        ELSE 'bucket_5' 
+        END as bucket 
+      FROM prem_nyc_taxi_bucket) as sub_tbl 
+GROUP BY bucket
+ORDER BY bucket;
+
+--
+-- Ans 2.  The results of the table clearly specify the following about tip_bucket. 
+--         bucket_1 [0,5) constitutes 92.411% of all records in the dataset.
+--         bucket_2 [5,10) constitutes 5.623% of all records in the dataset.
+--         bucket_3 [10,15) constitutes 1.685% of all records in the dataset.
+--         bucket_4 [15,20) constitutes 0.191% of all records in the dataset.
+--         bucket_5 greater than 20 constitutes 0.09% of all records in the dataset.
+--
+-- bucket	num_records	percent_share
+-- bucket_1	  17078480	0.92411
+-- bucket_2	  1039251	0.05623
+-- bucket_3	  311316	0.01685
+-- bucket_4	  35314	    0.00191
+-- bucket_5	  16606	    0.0009
+
+--
+-- Q3. Which month has a greater average ‘speed’ - November or December? Note that the variable ‘speed’ will have to be derived from other metrics.
+--
+
+SELECT round( avg( CASE WHEN month(tpep_pickup_timestamp) = 11 THEN ( trip_distance / ( ( unix_timestamp(tpep_dropoff_timestamp) - unix_timestamp(tpep_pickup_timestamp) ) / 3600))
+                        ELSE null
+				   END ), 3) as nov_avg_speed,
+	   round( avg( CASE WHEN month(tpep_pickup_timestamp) = 12 THEN ( trip_distance / ( ( unix_timestamp(tpep_dropoff_timestamp) - unix_timestamp(tpep_pickup_timestamp) ) / 3600))
+            	   ELSE null
+				   END), 3) as dec_avg_speed
+FROM prem_nyc_taxi_bucket;
+
+--
+-- Ans 3. Average speed in Nov is 12.695 MPH andDec is 12.625 MPH. Result of the table clearly specify that average speed is greater in November.  
+--
+-- nov_avg_speed	dec_avg_speed
+-- 12.695	          12.625
+
+--
+-- Q4. Analyse the average speed of the most happening days of the year i.e. 31st December (New year’s eve) and 25th December (Christmas Eve) and compare it with the overall average. 
+--
+
+SELECT round( avg ( CASE WHEN month(tpep_pickup_timestamp) = 12 AND day(tpep_pickup_timestamp) = 25 THEN (trip_distance / ((unix_timestamp(tpep_dropoff_timestamp) - unix_timestamp(tpep_pickup_timestamp)) / 3600)) 
+						 ELSE null
+				    END ), 3) as christmas_avg_speed,
+  	   round( avg ( CASE WHEN month(tpep_pickup_timestamp) = 12 AND day(tpep_pickup_timestamp) = 31 THEN (trip_distance / ((unix_timestamp(tpep_dropoff_timestamp) - unix_timestamp(tpep_pickup_timestamp)) / 3600))
+    	                 ELSE null
+				    END), 3) as newyear_avg_speed,
+	   round( avg ( CASE WHEN month(tpep_pickup_timestamp) IN (11,12) THEN (trip_distance / ((unix_timestamp(tpep_dropoff_timestamp) - unix_timestamp(tpep_pickup_timestamp)) / 3600))
+             	    ELSE null
+					END), 3) as overall_avg_speed
+FROM prem_nyc_taxi_bucket;
+
+--
+-- Ans 4. Average speed at 31st December (New year’s eve) is 14.091 MPH and Average speed at 25th December (Christmas Eve) is 16.859 MPH.
+--        Which is significantly higher than overall average speed which is 12.659 MPH.
+--
+-- christmas_avg_speed	newyear_avg_speed	overall_avg_speed
+-- 16.859	                  14.091	        12.659
+
+--
+-- *** End of the Analysis ***
+--
