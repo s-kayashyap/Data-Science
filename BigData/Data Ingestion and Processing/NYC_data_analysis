@@ -13,8 +13,8 @@
 --                         3. prem_nyc_taxi_bucket (created 5 bucket to improve the performance)
 -- 
 -- Input datasets -> 
--- yellow_tripdata_2017-11.csv
--- yellow_tripdata_2017-12.csv 
+-- yellow_tripdata_2017-11.csv (https://s3.amazonaws.com/nyc-tlc/trip+data/yellow_tripdata_2017-11.csv)
+-- yellow_tripdata_2017-12.csv (https://s3.amazonaws.com/nyc-tlc/trip+data/yellow_tripdata_2017-12.csv)
 --                       : Both the dataset have similar information. Following are the important fields
 --                         which we have in the dataset.
 -- 1.  vendorid--A code indicating the TPEP provider that provided the record. 1= Creative Mobile Technologies, LLC; 2= VeriFone Inc. 
